@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity, ActivityIndicator, TextInput, Button, Alert } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy'; // <-- THE FIX IS HERE
+import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';    
+import { Video } from 'expo-av'; // <-- NEW: The Video Player Tool!
 
 // --- YOUR KEYS ---
 const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
@@ -15,6 +16,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  
+  // --- NEW: Memory to track which video you want to watch ---
+  const [playingVideo, setPlayingVideo] = useState(null); 
 
   async function fetchVideos() {
     const { data, error } = await supabase.from('videos').select('*').order('id', { ascending: false });
@@ -46,7 +50,6 @@ export default function App() {
       const videoUri = result.assets[0].uri;
       const fileName = `video_${Date.now()}.mp4`; 
 
-      // Using the legacy filesystem reader to convert the video
       const base64Data = await FileSystem.readAsStringAsync(videoUri, { encoding: 'base64' });
       
       const { error: uploadError } = await supabase.storage.from('media').upload(fileName, decode(base64Data), {
@@ -78,7 +81,8 @@ export default function App() {
   }
 
   const renderItem = ({ item }) => (
-    <TouchableOpacity style={styles.card}>
+    // --- NEW: Tapping the card now sets this video as the "playingVideo" ---
+    <TouchableOpacity style={styles.card} onPress={() => setPlayingVideo(item)}>
       <Image source={{ uri: item.thumbnail_url }} style={styles.thumbnail} />
       <View style={styles.info}>
         <Text style={styles.title}>{item.title}</Text>
@@ -91,21 +95,40 @@ export default function App() {
     <View style={styles.container}>
       <Text style={styles.header}>My Stream Admin</Text>
 
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter Movie / Vlog Title"
-          placeholderTextColor="#888"
-          value={newTitle}
-          onChangeText={setNewTitle}
-        />
-        <Button
-          title={isAdding ? "Uploading... Do not close app!" : "Select Video & Upload"}
-          color="#1db954"
-          onPress={pickAndUploadVideo}
-          disabled={isAdding}
-        />
-      </View>
+      {/* --- NEW: The Video Player UI --- */}
+      {/* If a video is selected, show the player instead of the upload form */}
+      {playingVideo ? (
+        <View style={styles.playerContainer}>
+          <Text style={styles.playingTitle}>Playing: {playingVideo.title}</Text>
+          <Video
+            source={{ uri: playingVideo.video_url }}
+            rate={1.0}
+            volume={1.0}
+            isMuted={false}
+            resizeMode="contain"
+            shouldPlay
+            useNativeControls // Adds standard Play/Pause/Fullscreen buttons
+            style={styles.videoPlayer}
+          />
+          <Button title="Close Video" color="#ff4444" onPress={() => setPlayingVideo(null)} />
+        </View>
+      ) : (
+        <View style={styles.form}>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter Movie / Vlog Title"
+            placeholderTextColor="#888"
+            value={newTitle}
+            onChangeText={setNewTitle}
+          />
+          <Button
+            title={isAdding ? "Uploading... Do not close app!" : "Select Video & Upload"}
+            color="#1db954"
+            onPress={pickAndUploadVideo}
+            disabled={isAdding}
+          />
+        </View>
+      )}
 
       {loading ? (
         <ActivityIndicator size="large" color="#00ff00" style={{marginTop: 50}} />
@@ -123,7 +146,12 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#333', color: '#fff', padding: 10, borderRadius: 5, marginBottom: 10 },
   card: { flexDirection: 'row', padding: 15, borderBottomWidth: 0.5, borderBottomColor: '#333' },
   thumbnail: { width: 120, height: 70, borderRadius: 8, backgroundColor: '#222' },
-  info: { marginLeft: 15, justifyContent: 'center' },
+  info: { marginLeft: 15, justifyContent: 'center', flexShrink: 1 },
   title: { color: '#fff', fontSize: 16, fontWeight: '600' },
   details: { color: '#aaa', fontSize: 12, marginTop: 4 },
+  
+  // --- NEW STYLES FOR THE PLAYER ---
+  playerContainer: { backgroundColor: '#1a1a1a', padding: 15, marginHorizontal: 20, marginBottom: 20, borderRadius: 8 },
+  playingTitle: { color: '#1db954', fontSize: 16, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  videoPlayer: { width: '100%', height: 220, backgroundColor: '#000', marginBottom: 15 },
 });
