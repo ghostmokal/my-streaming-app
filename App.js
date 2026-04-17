@@ -8,7 +8,13 @@ import { Video } from 'expo-av';
 
 const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
 const supabaseAnonKey = 'sb_publishable_D9NJf0Vm3UdB1ztfPqf79g_0TJ9BSm1';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+});
 
 export default function App() {
   const [view, setView] = useState('stream'); // 'stream' or 'chat'
