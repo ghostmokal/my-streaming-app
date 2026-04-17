@@ -1,28 +1,47 @@
-import React from 'react';
-import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { createClient } from '@supabase/supabase-js';
 
-// Sample data for your movies/vlogs
-const DATA = [
-  { id: '1', title: 'My First Vlog', thumb: 'https://via.placeholder.com/150', duration: '10:05' },
-  { id: '2', title: 'Top 10 Tech Tips', thumb: 'https://via.placeholder.com/150', duration: '05:20' },
-  { id: '3', title: 'HSC Chemistry Prep', thumb: 'https://via.placeholder.com/150', duration: '15:45' },
-];
+// --- YOUR KEYS ARE ADDED HERE ---
+const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
+const supabaseAnonKey = 'sb_publishable_D9NJf0Vm3UdB1ztfPqf79g_0TJ9BSm1';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// --------------------------------
 
 export default function App() {
+  const [videos, setVideos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // This function fetches your movies from the database when the app opens
+  useEffect(() => {
+    async function fetchVideos() {
+      const { data, error } = await supabase.from('videos').select('*');
+      if (error) console.error('Error fetching videos:', error);
+      else setVideos(data);
+      setLoading(false);
+    }
+    fetchVideos();
+  }, []);
+
   const renderItem = ({ item }) => (
     <TouchableOpacity style={styles.card}>
-      <Image source={{ uri: item.thumb }} style={styles.thumbnail} />
+      <Image source={{ uri: item.thumbnail_url || 'https://via.placeholder.com/150' }} style={styles.thumbnail} />
       <View style={styles.info}>
         <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.details}>{item.duration} • 1.2K Views</Text>
+        <Text style={styles.details}>{item.duration} • {item.views} Views</Text>
       </View>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Mokal Stream</Text>
-      <FlatList data={DATA} renderItem={renderItem} keyExtractor={item => item.id} />
+      <Text style={styles.header}>My Stream</Text>
+      
+      {loading ? (
+        <ActivityIndicator size="large" color="#00ff00" style={{marginTop: 50}} />
+      ) : (
+        <FlatList data={videos} renderItem={renderItem} keyExtractor={item => item.id.toString()} />
+      )}
     </View>
   );
 }
