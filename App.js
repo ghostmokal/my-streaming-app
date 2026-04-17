@@ -21,19 +21,32 @@ export default function App() {
   const [playingMedia, setPlayingMedia] = useState(null);
   const [userName] = useState('User_' + Math.floor(Math.random() * 1000));
 
-  useEffect(() => {
+    useEffect(() => {
     fetchMedia();
     fetchChat();
 
-    // REALTIME SUBSCRIPTION
+    // The reliable "Auto-Refresh" Listener
     const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, 
-        (payload) => setChatMessages((prev) => [payload.new, ...prev]))
+      .channel('public:messages') 
+      .on(
+        'postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages' 
+        }, 
+        (payload) => {
+          // This line pushes the new message to the screen instantly
+          setChatMessages((prev) => [payload.new, ...prev]);
+        }
+      )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
 
   const fetchMedia = async () => {
     const { data } = await supabase.from('videos').select('*').order('id', { ascending: false });
