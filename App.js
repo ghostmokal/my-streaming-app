@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity, ActivityIndicator, TextInput, Button, Alert } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system'; 
+import * as FileSystem from 'expo-file-system/legacy'; // <-- THE FIX IS HERE
 import { decode } from 'base64-arraybuffer';    
 
 // --- YOUR KEYS ---
@@ -46,8 +46,7 @@ export default function App() {
       const videoUri = result.assets[0].uri;
       const fileName = `video_${Date.now()}.mp4`; 
 
-      // --- THE FIX IS HERE ---
-      // Using the direct string 'base64' bypasses the "undefined" bug
+      // Using the legacy filesystem reader to convert the video
       const base64Data = await FileSystem.readAsStringAsync(videoUri, { encoding: 'base64' });
       
       const { error: uploadError } = await supabase.storage.from('media').upload(fileName, decode(base64Data), {
