@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity, ActivityIndicator, TextInput, Button, Alert } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
-import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker'; // <-- NEW TOOL
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';    
-import { Video, Audio } from 'expo-av'; // Added Audio here
+import { Video } from 'expo-av'; 
 
 // --- YOUR KEYS ---
 const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
@@ -35,25 +35,25 @@ export default function App() {
       return;
     }
 
-    // This now allows both Videos AND Audio
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All, 
-      allowsEditing: true,
-      quality: 1,
+    // --- NEW: DocumentPicker sees Music, Videos, and Downloads ---
+    let result = await DocumentPicker.getDocumentAsync({
+      type: ['video/*', 'audio/*'], // Specifically ask for both
+      copyToCacheDirectory: true
     });
 
     if (result.canceled) return;
 
     setIsAdding(true);
     try {
-      const uri = result.assets[0].uri;
-      const fileExt = uri.split('.').pop();
-      const fileName = `media_${Date.now()}.${fileExt}`; 
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const fileName = asset.name; // Keep the original file name
+      const isAudio = asset.mimeType.startsWith('audio');
 
       const base64Data = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
       
       const { error: uploadError } = await supabase.storage.from('media').upload(fileName, decode(base64Data), {
-        contentType: fileExt === 'mp3' ? 'audio/mpeg' : 'video/mp4'
+        contentType: asset.mimeType
       });
       
       if (uploadError) throw uploadError;
@@ -63,7 +63,7 @@ export default function App() {
       const { error: dbError } = await supabase.from('videos').insert([
         {
           title: newTitle,
-          duration: fileExt === 'mp3' || fileExt === 'm4a' ? 'Audio' : 'Video',
+          duration: isAudio ? 'Audio' : 'Video',
           thumbnail_url: 'https://via.placeholder.com/150',
           video_url: publicUrl,
           views: 0
@@ -83,7 +83,7 @@ export default function App() {
   const renderItem = ({ item }) => (
     <TouchableOpacity style={styles.card} onPress={() => setPlayingMedia(item)}>
       <View style={styles.thumbnailPlaceholder}>
-        <Text style={{color: '#fff'}}>{item.duration === 'Audio' ? '🎵' : '🎬'}</Text>
+        <Text style={{fontSize: 24}}>{item.duration === 'Audio' ? '🎵' : '🎬'}</Text>
       </View>
       <View style={styles.info}>
         <Text style={styles.title}>{item.title}</Text>
@@ -94,44 +94,36 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Mokal Multi-Media</Text>
+      <Text style={styles.header}>Mokal Stream</Text>
 
       {playingMedia ? (
         <View style={styles.playerContainer}>
           <Text style={styles.playingTitle}>{playingMedia.title}</Text>
-          {playingMedia.duration === 'Audio' ? (
-            <View style={styles.audioVisualizer}>
-               <Text style={{fontSize: 50}}>🎵</Text>
-               <Text style={{color: '#fff', marginTop: 10}}>Playing Audio Stream...</Text>
-               <Video
-                source={{ uri: playingMedia.video_url }}
-                shouldPlay
-                useNativeControls
-                style={{ width: 0, height: 0 }} // Hide the video box for audio
-              />
-            </View>
-          ) : (
+          <View style={playingMedia.duration === 'Audio' ? styles.audioBox : styles.videoBox}>
             <Video
               source={{ uri: playingMedia.video_url }}
               resizeMode="contain"
               shouldPlay
               useNativeControls
-              style={styles.videoPlayer}
+              style={styles.fullPlayer}
             />
-          )}
+            {playingMedia.duration === 'Audio' && (
+              <Text style={styles.audioLabel}>Now Playing Audio...</Text>
+            )}
+          </View>
           <Button title="Close Player" color="#ff4444" onPress={() => setPlayingMedia(null)} />
         </View>
       ) : (
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder="Title (e.g. My Song or Vlog)"
+            placeholder="File Title (e.g. My Song)"
             placeholderTextColor="#888"
             value={newTitle}
             onChangeText={setNewTitle}
           />
           <Button
-            title={isAdding ? "Uploading..." : "Select Media (Audio/Video)"}
+            title={isAdding ? "Uploading..." : "Select Audio or Video"}
             color="#1db954"
             onPress={pickAndUploadMedia}
             disabled={isAdding}
@@ -160,6 +152,8 @@ const styles = StyleSheet.create({
   details: { color: '#aaa', fontSize: 12, marginTop: 4 },
   playerContainer: { backgroundColor: '#1a1a1a', padding: 15, marginHorizontal: 20, marginBottom: 20, borderRadius: 8 },
   playingTitle: { color: '#1db954', fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
-  videoPlayer: { width: '100%', height: 220, backgroundColor: '#000', marginBottom: 15 },
-  audioVisualizer: { width: '100%', height: 150, backgroundColor: '#000', marginBottom: 15, justifyContent: 'center', alignItems: 'center', borderRadius: 10 }
+  videoBox: { width: '100%', height: 220, backgroundColor: '#000', marginBottom: 15 },
+  audioBox: { width: '100%', height: 100, backgroundColor: '#222', marginBottom: 15, justifyContent: 'center', alignItems: 'center', borderRadius: 10 },
+  fullPlayer: { width: '100%', height: '100%' },
+  audioLabel: { color: '#fff', position: 'absolute', bottom: 10 }
 });
