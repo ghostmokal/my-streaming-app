@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity, ActivityIndicator, TextInput, Button, Alert } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
+import * as ImagePicker from 'expo-image-picker'; // <-- NEW TOOL INSTALLED!
 
 // --- YOUR KEYS ---
 const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
@@ -10,15 +11,10 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export default function App() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // --- NEW: Memory for our Upload Form ---
   const [newTitle, setNewTitle] = useState('');
-  const [newDuration, setNewDuration] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
-  // Function to pull videos from database
   async function fetchVideos() {
-    // We added .order() so newest videos show up at the top!
     const { data, error } = await supabase.from('videos').select('*').order('id', { ascending: false });
     if (error) console.error('Error fetching videos:', error);
     else setVideos(data);
@@ -29,30 +25,55 @@ export default function App() {
     fetchVideos();
   }, []);
 
-  // --- NEW: Function to send a new video to the database ---
-  async function addVideo() {
+  // --- NEW: The Magic Upload Function ---
+  async function pickAndUploadVideo() {
     if (newTitle === '') {
-      Alert.alert("Hold on!", "You need to type a movie title first.");
+      Alert.alert("Hold on!", "Please type a title for your video first.");
       return;
     }
 
-    setIsAdding(true);
-    const { error } = await supabase.from('videos').insert([
-      {
-        title: newTitle,
-        duration: newDuration || '00:00',
-        thumbnail_url: 'https://via.placeholder.com/150', // Keeps the dummy image for now
-        views: 0
-      }
-    ]);
+    // 1. Open the phone's gallery to pick a video
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 1,
+    });
 
-    if (error) {
-      Alert.alert("Error", error.message);
-    } else {
-      // Clear the text boxes and refresh the list
-      setNewTitle('');
-      setNewDuration('');
-      fetchVideos(); 
+    if (result.canceled) return; // User closed the gallery
+
+    setIsAdding(true);
+    try {
+      const videoUri = result.assets[0].uri;
+      
+      // 2. Convert the video into a format the cloud understands (a "Blob")
+      const response = await fetch(videoUri);
+      const blob = await response.blob();
+      const fileName = `video_${Date.now()}.mp4`; // Give it a unique name
+
+      // 3. Upload the heavy file to your 'media' bucket
+      const { error: uploadError } = await supabase.storage.from('media').upload(fileName, blob);
+      if (uploadError) throw uploadError;
+
+      // 4. Get the public URL so the world can watch it
+      const publicUrl = supabase.storage.from('media').getPublicUrl(fileName).data.publicUrl;
+
+      // 5. Save the title and the URL to the database
+      const { error: dbError } = await supabase.from('videos').insert([
+        {
+          title: newTitle,
+          duration: 'Uploaded',
+          thumbnail_url: 'https://via.placeholder.com/150', // We will add custom thumbnails later
+          video_url: publicUrl,
+          views: 0
+        }
+      ]);
+      if (dbError) throw dbError;
+
+      Alert.alert("Success!", "Video uploaded directly to your cloud!");
+      setNewTitle(''); // Clear the text box
+      fetchVideos();   // Refresh the list
+    } catch (error) {
+      Alert.alert("Upload Error", error.message);
     }
     setIsAdding(false);
   }
@@ -71,7 +92,6 @@ export default function App() {
     <View style={styles.container}>
       <Text style={styles.header}>My Stream Admin</Text>
 
-      {/* --- NEW: The Upload Form UI --- */}
       <View style={styles.form}>
         <TextInput
           style={styles.input}
@@ -80,17 +100,11 @@ export default function App() {
           value={newTitle}
           onChangeText={setNewTitle}
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Duration (e.g., 12:30)"
-          placeholderTextColor="#888"
-          value={newDuration}
-          onChangeText={setNewDuration}
-        />
         <Button
-          title={isAdding ? "Uploading to Server..." : "Add Video"}
+          title={isAdding ? "Uploading... Do not close app!" : "Select Video & Upload"}
           color="#1db954"
-          onPress={addVideo}
+          onPress={pickAndUploadVideo}
+          disabled={isAdding}
         />
       </View>
 
