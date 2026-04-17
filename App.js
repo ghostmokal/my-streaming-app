@@ -4,7 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';    
-import { Video } from 'expo-av'; 
+import { Video, Audio } from 'expo-av'; // <--- Make sure Audio is here!
+
 
 const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
 const supabaseAnonKey = 'sb_publishable_D9NJf0Vm3UdB1ztfPqf79g_0TJ9BSm1';
