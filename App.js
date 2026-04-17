@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity, ActivityIndicator, TextInput, Button, Alert } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system'; // <-- NEW TOOL
-import { decode } from 'base64-arraybuffer';    // <-- NEW TOOL
+import * as FileSystem from 'expo-file-system'; 
+import { decode } from 'base64-arraybuffer';    
 
 // --- YOUR KEYS ---
 const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
@@ -47,17 +47,15 @@ export default function App() {
       const fileName = `video_${Date.now()}.mp4`; 
 
       // --- THE FIX IS HERE ---
-      // 1. Read the video file securely from the phone's hard drive
-      const base64 = await FileSystem.readAsStringAsync(videoUri, { encoding: FileSystem.EncodingType.Base64 });
+      // Using the direct string 'base64' bypasses the "undefined" bug
+      const base64Data = await FileSystem.readAsStringAsync(videoUri, { encoding: 'base64' });
       
-      // 2. Upload it to Supabase using the stable ArrayBuffer format
-      const { error: uploadError } = await supabase.storage.from('media').upload(fileName, decode(base64), {
+      const { error: uploadError } = await supabase.storage.from('media').upload(fileName, decode(base64Data), {
         contentType: 'video/mp4'
       });
       
       if (uploadError) throw uploadError;
 
-      // 3. Get URL and save to database
       const publicUrl = supabase.storage.from('media').getPublicUrl(fileName).data.publicUrl;
 
       const { error: dbError } = await supabase.from('videos').insert([
