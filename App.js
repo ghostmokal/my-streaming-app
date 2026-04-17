@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';    
-import { Video } from 'expo-av'; // <-- NEW: The Video Player Tool!
+import { Video, Audio } from 'expo-av'; // Added Audio here
 
 // --- YOUR KEYS ---
 const supabaseUrl = 'https://rxwwjkiwciwfvzwkfydi.supabase.co';
@@ -12,33 +12,32 @@ const supabaseAnonKey = 'sb_publishable_D9NJf0Vm3UdB1ztfPqf79g_0TJ9BSm1';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function App() {
-  const [videos, setVideos] = useState([]);
+  const [mediaList, setMediaList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState('');
   const [isAdding, setIsAdding] = useState(false);
-  
-  // --- NEW: Memory to track which video you want to watch ---
-  const [playingVideo, setPlayingVideo] = useState(null); 
+  const [playingMedia, setPlayingMedia] = useState(null); 
 
-  async function fetchVideos() {
+  async function fetchMedia() {
     const { data, error } = await supabase.from('videos').select('*').order('id', { ascending: false });
-    if (error) console.error('Error fetching videos:', error);
-    else setVideos(data);
+    if (error) console.error('Error fetching:', error);
+    else setMediaList(data);
     setLoading(false);
   }
 
   useEffect(() => {
-    fetchVideos();
+    fetchMedia();
   }, []);
 
-  async function pickAndUploadVideo() {
+  async function pickAndUploadMedia() {
     if (newTitle === '') {
-      Alert.alert("Hold on!", "Please type a title for your video first.");
+      Alert.alert("Hold on!", "Please type a title first.");
       return;
     }
 
+    // This now allows both Videos AND Audio
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ImagePicker.MediaTypeOptions.All, 
       allowsEditing: true,
       quality: 1,
     });
@@ -47,13 +46,14 @@ export default function App() {
 
     setIsAdding(true);
     try {
-      const videoUri = result.assets[0].uri;
-      const fileName = `video_${Date.now()}.mp4`; 
+      const uri = result.assets[0].uri;
+      const fileExt = uri.split('.').pop();
+      const fileName = `media_${Date.now()}.${fileExt}`; 
 
-      const base64Data = await FileSystem.readAsStringAsync(videoUri, { encoding: 'base64' });
+      const base64Data = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
       
       const { error: uploadError } = await supabase.storage.from('media').upload(fileName, decode(base64Data), {
-        contentType: 'video/mp4'
+        contentType: fileExt === 'mp3' ? 'audio/mpeg' : 'video/mp4'
       });
       
       if (uploadError) throw uploadError;
@@ -63,7 +63,7 @@ export default function App() {
       const { error: dbError } = await supabase.from('videos').insert([
         {
           title: newTitle,
-          duration: 'Uploaded',
+          duration: fileExt === 'mp3' || fileExt === 'm4a' ? 'Audio' : 'Video',
           thumbnail_url: 'https://via.placeholder.com/150',
           video_url: publicUrl,
           views: 0
@@ -71,9 +71,9 @@ export default function App() {
       ]);
       if (dbError) throw dbError;
 
-      Alert.alert("Success!", "Video uploaded directly to your cloud!");
+      Alert.alert("Success!", "Media uploaded successfully!");
       setNewTitle(''); 
-      fetchVideos();   
+      fetchMedia();   
     } catch (error) {
       Alert.alert("Upload Error", error.message);
     }
@@ -81,50 +81,59 @@ export default function App() {
   }
 
   const renderItem = ({ item }) => (
-    // --- NEW: Tapping the card now sets this video as the "playingVideo" ---
-    <TouchableOpacity style={styles.card} onPress={() => setPlayingVideo(item)}>
-      <Image source={{ uri: item.thumbnail_url }} style={styles.thumbnail} />
+    <TouchableOpacity style={styles.card} onPress={() => setPlayingMedia(item)}>
+      <View style={styles.thumbnailPlaceholder}>
+        <Text style={{color: '#fff'}}>{item.duration === 'Audio' ? '🎵' : '🎬'}</Text>
+      </View>
       <View style={styles.info}>
         <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.details}>{item.duration} • {item.views} Views</Text>
+        <Text style={styles.details}>{item.duration}</Text>
       </View>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>My Stream Admin</Text>
+      <Text style={styles.header}>Mokal Multi-Media</Text>
 
-      {/* --- NEW: The Video Player UI --- */}
-      {/* If a video is selected, show the player instead of the upload form */}
-      {playingVideo ? (
+      {playingMedia ? (
         <View style={styles.playerContainer}>
-          <Text style={styles.playingTitle}>Playing: {playingVideo.title}</Text>
-          <Video
-            source={{ uri: playingVideo.video_url }}
-            rate={1.0}
-            volume={1.0}
-            isMuted={false}
-            resizeMode="contain"
-            shouldPlay
-            useNativeControls // Adds standard Play/Pause/Fullscreen buttons
-            style={styles.videoPlayer}
-          />
-          <Button title="Close Video" color="#ff4444" onPress={() => setPlayingVideo(null)} />
+          <Text style={styles.playingTitle}>{playingMedia.title}</Text>
+          {playingMedia.duration === 'Audio' ? (
+            <View style={styles.audioVisualizer}>
+               <Text style={{fontSize: 50}}>🎵</Text>
+               <Text style={{color: '#fff', marginTop: 10}}>Playing Audio Stream...</Text>
+               <Video
+                source={{ uri: playingMedia.video_url }}
+                shouldPlay
+                useNativeControls
+                style={{ width: 0, height: 0 }} // Hide the video box for audio
+              />
+            </View>
+          ) : (
+            <Video
+              source={{ uri: playingMedia.video_url }}
+              resizeMode="contain"
+              shouldPlay
+              useNativeControls
+              style={styles.videoPlayer}
+            />
+          )}
+          <Button title="Close Player" color="#ff4444" onPress={() => setPlayingMedia(null)} />
         </View>
       ) : (
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder="Enter Movie / Vlog Title"
+            placeholder="Title (e.g. My Song or Vlog)"
             placeholderTextColor="#888"
             value={newTitle}
             onChangeText={setNewTitle}
           />
           <Button
-            title={isAdding ? "Uploading... Do not close app!" : "Select Video & Upload"}
+            title={isAdding ? "Uploading..." : "Select Media (Audio/Video)"}
             color="#1db954"
-            onPress={pickAndUploadVideo}
+            onPress={pickAndUploadMedia}
             disabled={isAdding}
           />
         </View>
@@ -133,7 +142,7 @@ export default function App() {
       {loading ? (
         <ActivityIndicator size="large" color="#00ff00" style={{marginTop: 50}} />
       ) : (
-        <FlatList data={videos} renderItem={renderItem} keyExtractor={item => item.id.toString()} />
+        <FlatList data={mediaList} renderItem={renderItem} keyExtractor={item => item.id.toString()} />
       )}
     </View>
   );
@@ -145,13 +154,12 @@ const styles = StyleSheet.create({
   form: { backgroundColor: '#1a1a1a', padding: 15, marginHorizontal: 20, marginBottom: 20, borderRadius: 8 },
   input: { backgroundColor: '#333', color: '#fff', padding: 10, borderRadius: 5, marginBottom: 10 },
   card: { flexDirection: 'row', padding: 15, borderBottomWidth: 0.5, borderBottomColor: '#333' },
-  thumbnail: { width: 120, height: 70, borderRadius: 8, backgroundColor: '#222' },
-  info: { marginLeft: 15, justifyContent: 'center', flexShrink: 1 },
+  thumbnailPlaceholder: { width: 80, height: 60, borderRadius: 8, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
+  info: { marginLeft: 15, justifyContent: 'center' },
   title: { color: '#fff', fontSize: 16, fontWeight: '600' },
   details: { color: '#aaa', fontSize: 12, marginTop: 4 },
-  
-  // --- NEW STYLES FOR THE PLAYER ---
   playerContainer: { backgroundColor: '#1a1a1a', padding: 15, marginHorizontal: 20, marginBottom: 20, borderRadius: 8 },
-  playingTitle: { color: '#1db954', fontSize: 16, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  playingTitle: { color: '#1db954', fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
   videoPlayer: { width: '100%', height: 220, backgroundColor: '#000', marginBottom: 15 },
+  audioVisualizer: { width: '100%', height: 150, backgroundColor: '#000', marginBottom: 15, justifyContent: 'center', alignItems: 'center', borderRadius: 10 }
 });
